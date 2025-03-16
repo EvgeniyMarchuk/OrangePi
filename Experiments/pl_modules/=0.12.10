@@ -1,0 +1,15 @@
+Using version ^0.19.8 for wandb
+
+Updating dependencies
+Resolving dependencies...
+
+Package operations: 6 installs, 0 updates, 0 removals
+
+  - Installing gitdb (4.0.12)
+  - Installing docker-pycreds (0.4.0)
+  - Installing gitpython (3.1.44)
+  - Installing sentry-sdk (2.22.0)
+  - Installing setproctitle (1.3.5)
+  - Installing wandb (0.19.8)
+
+Writing lock file
