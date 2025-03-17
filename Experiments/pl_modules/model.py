@@ -1,11 +1,12 @@
 import os
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-
+import wandb
 import torch
 import torch.optim as optim
 import torch.nn as nn
 from torchmetrics import JaccardIndex
+from torchvision.transforms import functional as F
 import pytorch_lightning as pl
 import segmentation_models_pytorch as smp
 
@@ -73,6 +74,9 @@ class SegmentationModel(pl.LightningModule):
         preds = torch.sigmoid(outputs)
         iou = self.iou_metric(preds, masks)
 
+        if self.current_epoch % 2 == 0 and batch_idx == 0:
+            self.log_predictions(images, masks, preds)
+
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_iou", iou, prog_bar=True)
 
@@ -89,3 +93,21 @@ class SegmentationModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.lr)
         return {"optimizer": optimizer}
+    
+    def log_predictions(self, images, masks, preds):
+        """Логирование предсказаний в WandB"""
+        images = images.cpu()
+        masks = masks.cpu()
+        preds = torch.sigmoid(preds).cpu()  # Применяем сигмоиду для бинарных масок
+
+        logs = []
+        for i in range(min(2, images.shape[0])):  # Логируем 2 изображения
+            img = F.to_pil_image(images[i])
+            mask = F.to_pil_image(masks[i])
+            pred_mask = F.to_pil_image(preds[i])
+
+            logs.append(wandb.Image(img, caption="Validation Input Image"))
+            logs.append(wandb.Image(mask, caption="Ground Truth"))
+            logs.append(wandb.Image(pred_mask, caption="Prediction"))
+
+        self.logger.experiment.log({"Predictions": logs})

@@ -9,6 +9,7 @@ from albumentations.pytorch import ToTensorV2
 import cv2
 import os
 
+
 class RoadSegmentationDataset(Dataset):
     def __init__(self, images_path, masks_path, transform=None):
         self.image_paths = sorted(os.listdir(str(images_path)))
@@ -33,7 +34,6 @@ class RoadSegmentationDataset(Dataset):
             mask = augmented["mask"].unsqueeze(0)  # [H, W] -> [1, H, W]
 
         return image, mask
-
 
 class RoadSegmentationDataModule(pl.LightningDataModule):
     def __init__(
@@ -63,6 +63,7 @@ class RoadSegmentationDataModule(pl.LightningDataModule):
         ])
         self.test_transform = A.Compose([
             A.Resize(256, 256),
+            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ])
 
