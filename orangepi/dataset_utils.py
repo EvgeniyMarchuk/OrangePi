@@ -100,8 +100,57 @@ class DeepGlobeDataset(Dataset):
         mask[mask == 255] = 1
 
         return image, mask
+    
+
+class LandDataset(Dataset):
+    def __init__(
+        self, root_dir, model_type, transforms=None, processor=None, image_size=512
+    ):
+        self.model_type = model_type
+        self.transforms = transforms
+        self.processor = processor
+        self.image_size = image_size
+
+        images_dir = root_dir / "images"
+        masks_dir = root_dir / "masks"
+
+        self.image_paths = sorted(
+            [images_dir / file_name for file_name in os.listdir(images_dir)]
+        )
+        self.mask_paths = sorted(
+            [masks_dir / file_name for file_name in os.listdir(masks_dir)]
+        )
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, index):
+        image_path = self.image_paths[index]
+        mask_path = self.mask_paths[index]
+
+        image = Image.open(image_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L")
+
+        if self.model_type == "segformer":
+            encoding = self.processor(image, return_tensors="pt")
+            image = encoding["pixel_values"].squeeze(0)  # [3, H, W]
+            mask = mask.resize(
+                (self.image_size, self.image_size), resample=Image.NEAREST
+            )
+        else:
+            image = self.transforms(image)
+            mask = mask.resize(
+                (self.image_size, self.image_size), resample=Image.NEAREST
+            )
+
+        mask = torch.tensor(np.array(mask), dtype=torch.long)
+        mask[mask == 255] = 1
+
+        return image, mask
+
 
 __all__ = [
     "split_dataset",
     "DeepGlobeDataset",
+    "LandDataset"
 ]

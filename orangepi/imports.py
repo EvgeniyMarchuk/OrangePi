@@ -20,6 +20,7 @@ from torch.utils.data import Dataset
 from torch.utils.data import DataLoader 
 from torchmetrics import Dice, JaccardIndex, Recall
 from torchvision.models.segmentation import deeplabv3_mobilenet_v3_large as deeplab_model
+from torchvision.models.segmentation import DeepLabV3_MobileNet_V3_Large_Weights as WEIGHTS
 from transformers import (SegformerForSemanticSegmentation,
                           SegformerImageProcessor)
 
@@ -39,7 +40,6 @@ __all__ = [
     "F",
     "T",
     "plt",
-    "deeplab_model",
     "smp",
     "Image",
     "summary",
@@ -48,6 +48,8 @@ __all__ = [
     "Dice",
     "JaccardIndex",
     "Recall",
+    "WEIGHTS",
+    "deeplab_model",
     "SegformerForSemanticSegmentation",
     "SegformerImageProcessor",
 ]

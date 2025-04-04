@@ -1,10 +1,8 @@
-import os
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
-
 import wandb
 import torch
 import torch.optim as optim
 import torch.nn as nn
+from torchinfo import summary
 from torchmetrics import JaccardIndex
 from torchvision.transforms import functional as F
 import pytorch_lightning as pl
@@ -18,7 +16,6 @@ class SegmentationModel(pl.LightningModule):
         encoder="resnet50",
         encoder_weights="imagenet",
         lr=1e-4,
-        model_encoder=None,
         num_classes=1,
         loss_fn=nn.BCEWithLogitsLoss(),
         freeze_layers=0,
@@ -26,29 +23,35 @@ class SegmentationModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
 
-        self.model = smp.DeepLabV3Plus(
+        self.model = smp.PSPNet(
             encoder_name=encoder,
             encoder_weights=encoder_weights,
             in_channels=3,
             classes=num_classes
         )
-        
+
         self.lr = lr
         self.loss_fn = loss_fn
         self.iou_metric = JaccardIndex(
             task="binary",
             num_classes=num_classes
         )
-        print(f"lr = {lr}")
-        print(f"Encoder = {encoder}")
-        print(f"Loss function = {loss_fn}")
-        # Замораживаем первые `freeze_layers` слоев энкодера
+        self.backward_counter = 0
+
+        # Замораживаем первые freeze_layers слоев энкодера
         if freeze_layers > 0:
             encoder_layers = list(self.model.encoder.children())
             for layer in encoder_layers[:freeze_layers]:
                 for param in layer.parameters():
                     param.requires_grad = False
-        
+        summary(
+            model=self.model,
+            input_size=(1, 3, 480, 640),
+            col_names=["input_size", "output_size", "num_params", "trainable"],
+            col_width=20,
+            row_settings=["var_names"],
+        )
+
     def forward(self, x):
         return self.model(x)
 
@@ -89,16 +92,24 @@ class SegmentationModel(pl.LightningModule):
         preds = torch.sigmoid(preds)
         iou = self.iou_metric(preds, masks)
         return iou.item()
+    
+    def on_after_backward(self):
+        self.backward_counter += 1
+        if self.backward_counter % 55 == 1 and self.current_epoch % 5 == 0:
+            for name, value in self.named_parameters():
+                if value.grad is not None:
+                    print(f"dW / w = {value.grad.norm() / value.norm()}")
 
     def configure_optimizers(self):
         optimizer = optim.AdamW(self.parameters(), lr=self.lr)
-        return {"optimizer": optimizer}
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 30], gamma=0.5)
+        return [optimizer], [scheduler]
     
     def log_predictions(self, images, masks, preds):
         """Логирование предсказаний в WandB"""
         images = images.cpu()
         masks = masks.cpu()
-        preds = torch.sigmoid(preds).cpu()  # Применяем сигмоиду для бинарных масок
+        preds = preds.cpu()
 
         logs = []
         for i in range(min(2, images.shape[0])):  # Логируем 2 изображения

@@ -8,14 +8,19 @@ CLASS_IDS = {
 }
 
 CLASS_COLORS = {
+    # 0: [0, 0, 0],
+    # 1: [255, 0, 0],
+    # 2: [0, 255, 0],
+    # 3: [0, 0, 255],
+    # 4: [255, 255, 0]
     0: 0,
-    1: 250,
-    2: 190,
-    3: 130,
-    4: 70
+    1: 255,
+    2: 255,
+    3: 255,
+    4: 255
 }
 
-NUM_CLASSES = len(CLASS_IDS)
+NUM_CLASSES = len(CLASS_COLORS)
 
 __all__ = [
     "DEVICE",

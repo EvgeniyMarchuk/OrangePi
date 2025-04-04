@@ -1,8 +1,4 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
 import pytorch_lightning as pl
-import segmentation_models_pytorch as smp
 from torch.utils.data import DataLoader, Dataset
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -24,7 +20,6 @@ class RoadSegmentationDataset(Dataset):
     def __getitem__(self, idx):
         image = cv2.imread(os.path.join(self.base_images_path, self.image_paths[idx]))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
         mask = cv2.imread(os.path.join(self.base_masks_path, self.mask_paths[idx]), cv2.IMREAD_GRAYSCALE)
         mask = (mask > 128).astype("float32")  # Приводим к 0 и 1
 
@@ -55,14 +50,20 @@ class RoadSegmentationDataModule(pl.LightningDataModule):
 
         self.batch_size = batch_size
         self.transform = A.Compose([
-            A.Resize(256, 256),
+            A.VerticalFlip(p=0.5),
             A.HorizontalFlip(p=0.5),
-            A.RandomBrightnessContrast(p=0.2),
+            A.RandomBrightnessContrast(p=0.3),
+            A.RandomRotate90(p=0.4),
+            A.CoarseDropout(),
+            A.Perspective(scale=(0.0, 0.3)),
+            A.ShiftScaleRotate(rotate_limit=(-120, 120)),
+            A.ThinPlateSpline(),
+            A.Resize(480, 640),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ])
         self.test_transform = A.Compose([
-            A.Resize(256, 256),
+            A.Resize(480, 640),
             A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
             ToTensorV2(),
         ])

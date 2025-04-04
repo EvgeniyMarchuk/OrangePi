@@ -5,7 +5,7 @@ from orangepi.imports import *
 def load_model(
     model_path,
     model_type,
-    num_classes=NUM_CLASSES,
+    num_classes=5,
     device=DEVICE,
 ):
     model_config = {
@@ -61,19 +61,29 @@ def load_model(
     return model
 
 
-def make_prediction(model, frame, model_type):
+def make_prediction(model, frame, model_type, task):
     """В зависимости от типа модели делаем предсказания для переданных данных"""
-    pred = None
-    if model_type == "deeplab":
-        pred = model(frame)["out"]
-    if model_type == "unet_mobile":
-        pred = model(frame)
-    if model_type == "segformer":
-        pred = model(pixel_values=frame).logits
-        pred = F.interpolate(
-            pred, size=(512, 512), mode="bilinear", align_corners=False
-        )
-    return pred
+    raw_pred = None
+    predicted_classes = None
+    if model_type == "deeplab_smp":
+        raw_pred = model(frame)
+        predicted_classes = torch.argmax(raw_pred, dim=1).to(torch.int64)
+    else:
+        if model_type == "deeplab":
+            raw_pred = model(frame)["out"]
+        if model_type == "unet_mobile":
+            raw_pred = model(frame)
+        if model_type == "segformer":
+            raw_pred = model(pixel_values=frame).logits
+            raw_pred = F.interpolate(
+                raw_pred, size=(512, 512), mode="bilinear", align_corners=False
+            )
+        if task == "binary":
+            predicted_classes = (raw_pred.squeeze(1) > 0.5).int().to(torch.int64)
+        else:
+            predicted_classes = torch.argmax(raw_pred, dim=1).to(torch.int64)
+    
+    return raw_pred, predicted_classes
 
 
 def train(
@@ -95,7 +105,10 @@ def train(
     task="multiclass" if num_classes > 2 else "binary"
     iou_score = JaccardIndex(task=task, num_classes=num_classes).to(device)
     # пока что Dice score только для бинарной сегментации стоит
-    dice_score = Dice().to(device)
+    if task == "multiclass":
+        dice_score = Dice(num_classes=num_classes, average="macro", multiclass=(task == "multiclass")).to(device)
+    else:
+        dice_score = Dice().to(device)
     recall_score = Recall(task=task).to(DEVICE)
 
     if is_scheduler:
@@ -118,11 +131,8 @@ def train(
     # Начальная проверка
     model.eval()
     with torch.no_grad():
-        val_pred = make_prediction(model, val_data, model_name)
-        if task == "binary":
-            predicted_classes = (val_pred.squeeze(1) > 0.5).int().to(torch.int64)
-        else:
-            predicted_classes = torch.argmax(val_pred, dim=1).to(torch.int64)
+        val_pred, predicted_classes = make_prediction(model, val_data, model_name, task)
+        print(val_pred.shape, val_true_mask.shape)
         initial_val_loss = criterion(val_pred.squeeze(1), val_true_mask.float()).item()
         initial_val_iou_score = iou_score(predicted_classes, val_true_mask).detach()
         initial_val_dice_score = dice_score(predicted_classes, val_true_mask).detach()
@@ -150,11 +160,7 @@ def train(
             data, true_mask = data.to(device), true_mask.to(device)
             optimizer.zero_grad()
 
-            prediction = make_prediction(model, data, model_name)
-            if task == "binary":
-                predicted_classes = (prediction.squeeze(1) > 0.5).int().to(torch.int64)
-            else:
-                predicted_classes = torch.argmax(prediction, dim=1).to(torch.int64)
+            prediction, predicted_classes = make_prediction(model, data, model_name, task)
 
             loss = criterion(prediction.squeeze(1), true_mask.float())
 
@@ -191,11 +197,8 @@ def train(
         torch.cuda.empty_cache()  # Очищаем кеш перед валидацией
         model.eval()
         with torch.no_grad():
-            val_pred = make_prediction(model, val_data, model_name)
-            if task == "binary":
-                predicted_classes = (val_pred.squeeze(1) > 0.5).to(torch.int64)
-            else:
-                predicted_classes = torch.argmax(val_pred, dim=1).to(torch.int64)
+            val_pred, predicted_classes = make_prediction(model, val_data, model_name, task)
+            
             val_loss = criterion(val_pred.squeeze(1), val_true_mask.float()).item()
             val_iou_score = iou_score(predicted_classes, val_true_mask).detach()
             val_dice_score = dice_score(predicted_classes, val_true_mask).detach()
@@ -230,6 +233,7 @@ def train(
             print(
             f"Train Recall score: {train_recall_score:.4f},\tVal Recall score: {val_recall_score:.4f}"
             )
+            print()
 
     print(f"Best Validation Loss: {best_val_loss:.4f}")
     print(f"Best Validation IoU score: {best_val_iou_score:.4f}")

@@ -55,6 +55,8 @@ def load_model(
         config["modify_layer"](model)
 
     # Загружаем веса
+    # print(model)
+    # print(num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device).eval()
     return model
