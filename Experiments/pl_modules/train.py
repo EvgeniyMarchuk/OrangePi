@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 import optuna
+from torchinfo import summary
 import segmentation_models_pytorch as smp
 from pathlib import Path
 from dataset import RoadSegmentationDataModule
@@ -33,7 +34,7 @@ def train_model(
         train_path=Path("../data/road_simulator/train"),
         val_path=Path("../data/road_simulator/val"),
         test_path=Path("../data/road_simulator/val"),
-        batch_size=8,
+        batch_size=4,
     )
 
     # Создаём модель
@@ -47,9 +48,21 @@ def train_model(
         loss_fn=loss_function,
         freeze_layers=num_frozen_layers,
     )
+    
+    for block in list(model.model.encoder.children())[num_frozen_layers:]:
+        for param in block.parameters():
+            param.requires_grad = True
+
+    summary(
+        model=model,
+        input_size=(1, 3, 480, 640),
+        col_names=["input_size", "output_size", "num_params", "trainable"],
+        col_width=20,
+        row_settings=["var_names"],
+    )
 
     loggers = [
-        pl.loggers.WandbLogger(project="simulator-roads", name=f"PSPNet_600_tuning"),
+        pl.loggers.WandbLogger(project="simulator-roads", name=f"DeepLab_600_tuning_aug"),
     ]
 
     # Callbacks
@@ -57,7 +70,7 @@ def train_model(
         pl.callbacks.LearningRateMonitor(logging_interval="epoch"),
         pl.callbacks.ModelCheckpoint(
             dirpath=Path(output_path),
-            filename="pspnet_600_2",
+            filename="deeplab_600_aug",
             save_top_k=1,
             monitor="val_loss",
             mode="min",
@@ -108,14 +121,14 @@ if __name__ == "__main__":
     else:
         best_params = {
             "encoder": "efficientnet-b3",
-            "learning_rate": 3e-4,
+            "learning_rate": 1e-4,
             "loss_function_name": "dice",
-            "num_frozen_layers": 25,
+            "num_frozen_layers": 3,
         }
-
+        
         train_model(
             **best_params,
-            checkpoint_path="../checkpoints/PSPNet/pspnet.ckpt",
-            output_path="../checkpoints/PSPNet",
-            max_epochs=50
+            checkpoint_path="../checkpoints/DeepLabV3/deeplab_600.ckpt",
+            output_path="../checkpoints/DeepLabV3",
+            max_epochs=70
         )

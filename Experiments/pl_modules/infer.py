@@ -1,3 +1,4 @@
+import os
 import torch
 import cv2
 import numpy as np
@@ -14,13 +15,13 @@ def infer_image(model_checkpoint: Path, image_path: Path, output_dir: Path, mode
 
     # Загружаем модель из чекпойнта
     model = SegmentationModel.load_from_checkpoint(str(model_checkpoint))
-    summary(
-        model=model,
-        input_size=(1, 3, 480, 640),
-        col_names=["input_size", "output_size", "num_params", "trainable"],
-        col_width=20,
-        row_settings=["var_names"],
-    )
+    # summary(
+    #     model=model,
+    #     input_size=(1, 3, 480, 640),
+    #     col_names=["input_size", "output_size", "num_params", "trainable"],
+    #     col_width=20,
+    #     row_settings=["var_names"],
+    # )
     model.eval()
     model.to("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,9 +54,13 @@ def infer_image(model_checkpoint: Path, image_path: Path, output_dir: Path, mode
     cv2.imwrite(str(output_path), pred)
     print(f"Сохранён результат: {output_path}")
 
-infer_image(
-    model_checkpoint=Path("../checkpoints/DeepLabV3/deeplab_600.ckpt"),
-    image_path=Path("../data/road_simulator/train/images/CameraFlight.0150.png"),
-    output_dir=Path("../predictions"),
-    model_type="DeepLabV3"
-)
+base_dir = Path("../test_images")
+paths = os.listdir(base_dir)
+for path in paths:
+    path = base_dir / path
+    infer_image(
+        model_checkpoint=Path("../checkpoints/Unet/unet_600_aug_4.ckpt"),
+        image_path=Path(path),
+        output_dir=Path("../predictions/Unet_600"),
+        model_type="Unet_600_aug"
+    )

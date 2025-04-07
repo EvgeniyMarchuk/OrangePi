@@ -20,13 +20,22 @@ class RoadSegmentationDataset(Dataset):
     def __getitem__(self, idx):
         image = cv2.imread(os.path.join(self.base_images_path, self.image_paths[idx]))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = cv2.imread(os.path.join(self.base_masks_path, self.mask_paths[idx]), cv2.IMREAD_GRAYSCALE)
-        mask = (mask > 128).astype("float32")  # Приводим к 0 и 1
+        orig_mask = cv2.imread(os.path.join(self.base_masks_path, self.mask_paths[idx]), cv2.IMREAD_GRAYSCALE)
+        orig_mask = (orig_mask > 128).astype("float32")  # Приводим к 0 и 1
 
         if self.transform:
-            augmented = self.transform(image=image, mask=mask)
+            augmented = self.transform(image=image, mask=orig_mask)
+            aug_mask = augmented["mask"]
+            mask = ToTensorV2()(image=image, mask=aug_mask)["mask"]
+            mask = mask.unsqueeze(0)  # [H, W] -> [1, H, W]
+
+            image_normalization = A.Compose([
+                A.CoarseDropout(),  # делаем пятна на изображении, а маску оставляем прежней
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.ToTensorV2()
+            ])
             image = augmented["image"]
-            mask = augmented["mask"].unsqueeze(0)  # [H, W] -> [1, H, W]
+            image = image_normalization(image=image, mask=orig_mask)["image"]
 
         return image, mask
 
@@ -49,24 +58,20 @@ class RoadSegmentationDataModule(pl.LightningDataModule):
         self.test_masks_path = test_path / "masks"
 
         self.batch_size = batch_size
+
         self.transform = A.Compose([
             A.VerticalFlip(p=0.5),
             A.HorizontalFlip(p=0.5),
             A.RandomBrightnessContrast(p=0.3),
-            A.RandomRotate90(p=0.4),
-            A.CoarseDropout(),
             A.Perspective(scale=(0.0, 0.3)),
             A.ShiftScaleRotate(rotate_limit=(-120, 120)),
             A.ThinPlateSpline(),
             A.Resize(480, 640),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ])
+        ], additional_targets={"mask": "mask"})
+
         self.test_transform = A.Compose([
             A.Resize(480, 640),
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ])
+        ], additional_targets={"mask": "mask"})
 
         self.prepare_data_per_node = False
     
